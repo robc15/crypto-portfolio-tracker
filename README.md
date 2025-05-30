@@ -27,7 +27,7 @@ This project is a cryptocurrency portfolio tracker built using Streamlit. It all
 
 1. Clone the repository:
    ```sh
-   git clone https://github.com/yourusername/crypto-portfolio-tracker.git
+   git clone https://github.com/robc15/crypto-portfolio-tracker.git
    cd crypto-portfolio-tracker
    ```
 
