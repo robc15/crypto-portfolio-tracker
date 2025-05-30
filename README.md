@@ -25,13 +25,19 @@ This project is a cryptocurrency portfolio tracker built using Streamlit. It all
 
 ## Installation
 
-1. Clone the repository:
+1. **Create a Python virtual environment (recommended):**
+   ```sh
+   python3 -m venv .venv
+   source .venv/bin/activate
+   ```
+
+2. Clone the repository:
    ```sh
    git clone https://github.com/robc15/crypto-portfolio-tracker.git
    cd crypto-portfolio-tracker
    ```
 
-2. Install the required packages:
+3. Install the required packages:
    ```sh
    pip install -r requirements.txt
    ```
