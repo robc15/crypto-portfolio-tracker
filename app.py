@@ -464,9 +464,9 @@ def build_transactions_df(portfolio_entries_list):
     current_cols = [col for col in desired_cols_order if col in df.columns]
     remaining_cols = [col for col in df.columns if col not in current_cols]
     df = df[current_cols + remaining_cols]
+    # Note: The original string/object columns "Coins Purchased", "Purchase Price (USD)", "Fee Amount", "Fee Currency"
+    # are preserved for display. Calculations in build_summary_df will use the _Num versions.
 
-    # The original string/object columns "Coins Purchased", "Purchase Price (USD)", "Fee Amount"
-    # are preserved for display. Calculations will use the _Num versions.
     return df
 
 
@@ -1023,7 +1023,9 @@ def render_overview_metrics_and_movers(
             unsafe_allow_html=True
         )
 
-    st.markdown("#### <span style='font-size: 1.1em;'>🚀 Top Movers by Unrealized P/L %</span>", unsafe_allow_html=True)
+    # Changed from st.markdown to st.subheader for consistency
+    st.markdown("<br>", unsafe_allow_html=True)  # Added extra line break
+    st.subheader("🚀 Top Movers by Unrealized P/L %")
     mover_cols = st.columns(2)
     movers_df = summary_df_raw[  # Use summary_df_raw (enriched raw data)
         (summary_df_raw['Coin'] != 'US Dollars') &
@@ -1536,8 +1538,14 @@ def display_transactions_table(transactions_df_to_display):
         st.info("No transactions match the current filter criteria.")
         return
 
-    display_cols = [col for col in filtered_df.columns if col != "ID"]  # Use filtered_df for column definition
-
+    # Define explicitly which columns to display to the user in the transaction table
+    # This ensures internal calculation columns (like _Num versions) are not shown.
+    user_facing_display_cols = [
+        "Coin", "Symbol", "Type", "Coins Purchased", "Purchase Price (USD)",
+        "Total Cost", "Fee Amount", "Fee Currency", "Notes", "Timestamp"
+    ]
+    # Filter this list to only include columns that actually exist in the filtered_df
+    display_cols = [col for col in user_facing_display_cols if col in filtered_df.columns]
     # Adjust column proportions: make Notes wider, Actions column a bit wider for two buttons
     column_proportions = [
         1.5 if col not in ["Notes", "Symbol"] else (2.5 if col == "Notes" else 1)
