@@ -1486,11 +1486,32 @@ def display_transactions_table(transactions_df_to_display):
         st.write("No transactions yet.")
         return
 
-    df_display = transactions_df_to_display.copy()
+    df_to_filter = transactions_df_to_display.copy()
+
+    # --- Add Filter UI Elements ---
+    st.markdown("##### Filter Transactions")
+    filter_cols = st.columns([2, 2, 3])  # Adjust column ratios as needed
+
+    with filter_cols[0]:
+        unique_coins = sorted(df_to_filter["Coin"].unique())
+        selected_coins = st.multiselect("Filter by Coin:", unique_coins, default=[])
+
+    with filter_cols[1]:
+        unique_types = sorted(df_to_filter["Type"].unique())
+        selected_types = st.multiselect("Filter by Type:", unique_types, default=[])
+
+    # --- Apply Filters ---
+    filtered_df = df_to_filter.copy()
+    if selected_coins:
+        filtered_df = filtered_df[filtered_df["Coin"].isin(selected_coins)]
+    if selected_types:
+        filtered_df = filtered_df[filtered_df["Type"].isin(selected_types)]
+    # --- End Filter Application ---
 
     # Formatting for display (ensure Notes, Fee Amount, Fee Currency are handled if they exist)
-    if "Purchase Price (USD)" in df_display.columns:
-        df_display["Purchase Price (USD)"] = df_display["Purchase Price (USD)"].apply(
+    df_display = filtered_df.copy()  # Use the filtered DataFrame for display formatting
+    if "Purchase Price (USD)" in df_display.columns:  # Apply formatting to the potentially filtered df
+        df_display["Purchase Price (USD)"] = df_display["Purchase Price (USD)"].apply(  # Corrected: was df_display, should be on the current df
             lambda x: f"${x:,.2f}" if pd.notnull(x) else "-"
         )
     if "Total Cost" in df_display.columns:
@@ -1511,7 +1532,11 @@ def display_transactions_table(transactions_df_to_display):
             lambda x: (str(x)[:30] + '...' if pd.notnull(x) and len(str(x)) > 30 else str(x)) if pd.notnull(x) else ""
         )
 
-    display_cols = [col for col in df_display.columns if col != "ID"]
+    if filtered_df.empty:
+        st.info("No transactions match the current filter criteria.")
+        return
+
+    display_cols = [col for col in filtered_df.columns if col != "ID"]  # Use filtered_df for column definition
 
     # Adjust column proportions: make Notes wider, Actions column a bit wider for two buttons
     column_proportions = [
@@ -1524,7 +1549,8 @@ def display_transactions_table(transactions_df_to_display):
         header_cols[i].markdown(f"**{col_name}**")
     header_cols[-1].markdown("**Actions**")
 
-    for idx, row_data in transactions_df_to_display.iterrows():
+    # Iterate over the filtered DataFrame for display and actions
+    for idx, row_data in filtered_df.iterrows():
         entry_id = row_data['ID']  # Get the entry ID for actions
         form_key = f"actions_form_{entry_id}"
         confirm_delete_key = f"confirm_delete_{entry_id}"
@@ -1533,7 +1559,8 @@ def display_transactions_table(transactions_df_to_display):
             form_cols = st.columns(column_proportions)
 
             for i, col_name in enumerate(display_cols):
-                form_cols[i].write(str(df_display.loc[idx, col_name]))
+                # Use df_display for formatted values, but ensure idx exists if filtered_df is smaller
+                form_cols[i].write(str(df_display.loc[idx, col_name]) if idx in df_display.index else "N/A (Filtered Out After Formatting)")
 
             action_col = form_cols[-1]
             edit_col, delete_col = action_col.columns(2)
