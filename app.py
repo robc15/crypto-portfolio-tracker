@@ -15,7 +15,7 @@ Base = declarative_base()
 class PortfolioValueHistory(Base):
     __tablename__ = 'portfolio_value_history'
     id = Column(Integer, primary_key=True)
-    date = Column(String, unique=True, index=True)  # Store date as YYYY-MM-DD string
+    date = Column(String, unique=True, index=True)  # Store date as YYYY-MM-DD string YYYY-MM-DD
     total_value_usd = Column(Float)
 
 
@@ -60,8 +60,7 @@ def add_entry(coin,
               sell_to=None, btc_price_at_sale=None,
               timestamp=None,
               notes=None,
-              fee_amount=None,
-              fee_currency=None):  # Added notes, fee_amount, fee_currency
+              fee_amount=None, fee_currency=None):  # Added notes, fee_amount, fee_currency
     if timestamp is None:
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     entry = PortfolioEntry(
@@ -73,8 +72,8 @@ def add_entry(coin,
         btc_price_at_sale=btc_price_at_sale,
         timestamp=timestamp,
         notes=notes,  # Save notes
-        fee_amount=fee_amount,  # Save fee_amount (will be used in next feature)
-        fee_currency=fee_currency  # Save fee_currency (will be used in next feature)
+        fee_amount=fee_amount,  # Save fee_amount
+        fee_currency=fee_currency  # Save fee_currency
     )
     db_session.add(entry)
     db_session.commit()
@@ -107,7 +106,7 @@ def update_entry(
     sell_to=None,
     btc_price_at_sale=None
 ):
-    session = Session()  # Use a new session for safety if db_session is global
+    session = Session()  # Use a new session for safety
     try:
         entry = session.query(PortfolioEntry).filter(PortfolioEntry.id == entry_id).first()
         if entry:
@@ -126,7 +125,7 @@ def update_entry(
         return False
     except Exception as e:
         session.rollback()
-        st.error(f"Error updating transaction: {e}")
+        st.sidebar.error(f"Error updating transaction: {e}")
         return False
     finally:
         session.close()
@@ -137,7 +136,8 @@ def get_sell_targets():
     return {t.coin: t.target_price for t in targets}
 
 
-def record_daily_portfolio_value(date_obj: datetime.date, total_value_usd: float):  # Type hint corrected to datetime.date
+# Type hint corrected to datetime.date
+def record_daily_portfolio_value(date_obj: datetime.date, total_value_usd: float):
     """
     Records or updates the total portfolio value for a given date.
     If no record exists for the date, a new one is created.
@@ -146,11 +146,11 @@ def record_daily_portfolio_value(date_obj: datetime.date, total_value_usd: float
     date_obj: A datetime.date object.
     total_value_usd: The total portfolio value in USD.
     """
-    if total_value_usd is None:  # Do not record if the value is None
+    if total_value_usd is None:  # Do not record if value is None
         return
 
     date_str = date_obj.strftime('%Y-%m-%d')
-    session = Session()  # Create a new session
+    session = Session()
     try:
         existing_entry = session.query(PortfolioValueHistory).filter_by(date=date_str).first()
 
@@ -159,18 +159,18 @@ def record_daily_portfolio_value(date_obj: datetime.date, total_value_usd: float
             new_entry = PortfolioValueHistory(date=date_str, total_value_usd=total_value_usd)
             session.add(new_entry)
             session.commit()
-            # st.sidebar.info(f"Recorded initial portfolio value for {date_str}: ${total_value_usd:,.2f}") # Optional
+            # st.sidebar.info(f"Recorded initial portfolio value for {date_str}: ${total_value_usd:,.2f}")  # Optional
         elif total_value_usd > existing_entry.total_value_usd:
             # New value is higher than the existing recorded value for the day, so update
             existing_entry.total_value_usd = total_value_usd
             session.commit()
-            # st.sidebar.info(f"Updated portfolio value for {date_str} to a new high: ${total_value_usd:,.2f}") # Optional
+            # st.sidebar.info(f"Updated portfolio value for {date_str} to a new high: ${total_value_usd:,.2f}")  # Optional
         # else:
-            # Current value is not higher than already recorded for today, do nothing
-            # st.sidebar.info(
-            #     f"Portfolio value for {date_str} (${total_value_usd:,.2f}) is not higher than recorded "
-            #     f"(${existing_entry.total_value_usd:,.2f}). No update."
-            # )  # Optional
+        # Current value is not higher than already recorded for today, do nothing
+        # st.sidebar.info(
+        #     f"Portfolio value for {date_str} (${total_value_usd:,.2f}) is not higher than recorded "
+        #     f"(${existing_entry.total_value_usd:,.2f}). No update."
+        # )  # Optional
 
     except Exception as e:
         session.rollback()
@@ -179,23 +179,27 @@ def record_daily_portfolio_value(date_obj: datetime.date, total_value_usd: float
         session.close()
 
 
-def delete_today_portfolio_value():
+def delete_oldest_portfolio_value_history_entry():
     """
-    Deletes today's data point from the portfolio_value_history table.
+    Deletes the oldest (first) data point from the portfolio_value_history table.
     """
-    today_str = datetime.now().strftime('%Y-%m-%d')
     session = Session()
     try:
-        entry = session.query(PortfolioValueHistory).filter_by(date=today_str).first()
+        # Order by date (or id if it's guaranteed to be sequential for oldest) and get the first
+        entry = session.query(PortfolioValueHistory).order_by(PortfolioValueHistory.date.asc()).first()
+        # Alternatively, if 'id' is always increasing and represents the insert order:
+        # entry = session.query(PortfolioValueHistory).order_by(PortfolioValueHistory.id.asc()).first()
+
         if entry:
+            deleted_date = entry.date
             session.delete(entry)
             session.commit()
-            print(f"Deleted today's portfolio value history for {today_str}.")
+            print(f"Deleted the oldest portfolio value history entry for date: {deleted_date}.")
         else:
-            print(f"No portfolio value history found for today ({today_str}).")
+            print("No portfolio value history found to delete.")
     except Exception as e:
         session.rollback()
-        print(f"Error deleting today's portfolio value history: {e}")
+        print(f"Error deleting the oldest portfolio value history entry: {e}")
     finally:
         session.close()
 
@@ -210,7 +214,7 @@ def get_trend_chart_data_from_db(start_date_obj: datetime, end_date_obj: datetim
     start_date_str = start_date_obj.strftime('%Y-%m-%d')
     end_date_str = end_date_obj.strftime('%Y-%m-%d')
 
-    session = Session()  # Create a new session
+    session = Session()
     try:
         query = session.query(PortfolioValueHistory.date, PortfolioValueHistory.total_value_usd).\
             filter(PortfolioValueHistory.date >= start_date_str).\
@@ -225,7 +229,7 @@ def get_trend_chart_data_from_db(start_date_obj: datetime, end_date_obj: datetim
 
     df = pd.DataFrame(results, columns=['date', 'Total Portfolio Value'])
     if not df.empty:
-        df['date'] = pd.to_datetime(df['date'])  # Convert string date from DB to datetime for Plotly
+        df['date'] = pd.to_datetime(df['date'])  # Convert to datetime for Plotly
     return df
 
 
@@ -236,12 +240,25 @@ COINGECKO_ID_OVERRIDES = {
     "Dogecoin": "dogecoin",
     "Ethereum": "ethereum",
     "Avalanche": "avalanche-2",
-    "US Dollars": "us-dollars",  # Placeholder, not a real CoinGecko ID for price
+    "US Dollars": "us-dollars",  # Placeholder, not a real CoinGecko ID
     "ChainGPT": "chaingpt",
     "Polkadot": "polkadot",
     "ResearchCoin": "researchcoin",
     "Cellframe": "cellframe",
     "The Graph": "the-graph"
+}
+
+# --- Global Constants for Display Symbol Overrides ---
+MANUAL_SYMBOL_OVERRIDES = {
+    "Ethereum": "ETH",
+    "Bitcoin": "BTC",
+    "Avalanche": "AVAX",
+    "ChainGPT": "CGPT",
+    "Polkadot": "DOT",
+    "ResearchCoin": "RSC",
+    "Cellframe": "CELL",
+    "The Graph": "GRT",
+    "US Dollars": "USD"
 }
 
 
@@ -269,7 +286,8 @@ def build_coingecko_id_maps(coins_list_data):
     return name_to_id_map, symbol_to_id_map
 
 
-def lookup_coingecko_id(coin_name, symbol, name_to_id_map, symbol_to_id_map, coingecko_id_overrides):  # Added coingecko_id_overrides
+# Added coingecko_id_overrides
+def lookup_coingecko_id(coin_name, symbol, name_to_id_map, symbol_to_id_map, coingecko_id_overrides):
     # Prioritize manual overrides
     for override_name, override_id in coingecko_id_overrides.items():  # Use the passed map
         if coin_name.strip().lower() == override_name.lower():
@@ -296,14 +314,16 @@ def fetch_latest_prices(user_coins, user_symbols, name_to_id_map, symbol_to_id_m
     coingecko_ids = []
     id_map_debug = {}
     for coin, symbol in zip(user_coins, user_symbols):
-        cg_id = lookup_coingecko_id(coin, symbol, name_to_id_map, symbol_to_id_map, COINGECKO_ID_OVERRIDES)  # New
+        cg_id = lookup_coingecko_id(
+            coin, symbol, name_to_id_map, symbol_to_id_map, COINGECKO_ID_OVERRIDES
+        )  # New
         if not cg_id:
             cg_id = coin.lower().replace(" ", "-").replace("_", "-")  # Fallback ID
         coingecko_ids.append(cg_id)
         id_map_debug[coin] = cg_id
 
     latest_prices_from_api = {coin_name: None for coin_name in id_map_debug.keys()}
-
+    # Exclude placeholder
     valid_ids_for_api = [i for i in coingecko_ids if i and i != "us-dollars"]  # Exclude placeholder
     if not valid_ids_for_api:
         return latest_prices_from_api, id_map_debug, False
@@ -317,7 +337,7 @@ def fetch_latest_prices(user_coins, user_symbols, name_to_id_map, symbol_to_id_m
         prices_api_response = response.json()
 
         for coin_name_key, mapped_cg_id in id_map_debug.items():
-            if coin_name_key == "US Dollars":  # Handle USD explicitly if needed elsewhere
+            if coin_name_key == "US Dollars":  # Handle USD explicitly
                 latest_prices_from_api[coin_name_key] = 1.0
                 continue
             if (
@@ -393,17 +413,12 @@ def build_transactions_df(portfolio_entries_list):
             # --- End new column names ---
         ]
     )
-    manual_symbol_overrides = {
-        "Ethereum": "ETH", "Bitcoin": "BTC", "Avalanche": "AVAX", "ChainGPT": "CGPT",
-        "Polkadot": "DOT", "ResearchCoin": "RSC", "Cellframe": "CELL", "The Graph": "GRT",
-        "US Dollars": "USD"
-    }
 
     def get_display_symbol(coin_name_str):
         if not isinstance(coin_name_str, str):
             return "N/A"
-        if coin_name_str in manual_symbol_overrides:
-            return manual_symbol_overrides[coin_name_str]
+        if coin_name_str in MANUAL_SYMBOL_OVERRIDES:  # Use the global constant
+            return MANUAL_SYMBOL_OVERRIDES[coin_name_str]
         cg_symbol = name_to_cg_symbol_global.get(coin_name_str.lower())
         if cg_symbol:
             return cg_symbol
@@ -411,35 +426,94 @@ def build_transactions_df(portfolio_entries_list):
             return coin_name_str[:4].upper()
         return coin_name_str.upper()
 
+    # Convert to numeric early and create specific _Num columns for calculations
+    df["Coins Purchased Num"] = pd.to_numeric(df["Coins Purchased"], errors="coerce").fillna(0.0).round(8)
+    df["Purchase Price (USD) Numeric"] = pd.to_numeric(df["Purchase Price (USD)"], errors="coerce").fillna(0.0)
+    df["Fee Amount Num"] = pd.to_numeric(df["Fee Amount"], errors="coerce").fillna(0.0)
+
     df["Symbol"] = df["Coin"].apply(get_display_symbol)
+
+    # Calculate usd_fee_value for each transaction
+    df['usd_fee_value'] = 0.0
+    for index, row in df.iterrows():
+        if pd.notna(row['Fee Currency']) and row['Fee Amount Num'] > 0:
+            fee_currency_lower = str(row['Fee Currency']).lower()
+            coin_name_lower = str(row['Coin']).lower()
+            coin_symbol_upper = str(row.get('Symbol', '')).upper()
+
+            if fee_currency_lower == 'usd':
+                df.loc[index, 'usd_fee_value'] = row['Fee Amount Num']
+            elif fee_currency_lower == coin_name_lower or (
+                    coin_symbol_upper and fee_currency_lower == coin_symbol_upper.lower()):
+                # Fee is in the coin being purchased/sold. Value it at the transaction price.
+                df.loc[index, 'usd_fee_value'] = row['Fee Amount Num'] * row['Purchase Price (USD) Numeric']
+            # else: fee in another crypto, usd_fee_value remains 0 (not converted for this transaction's total cost)
+
+    # Calculate "Total Cost" for the transaction list (inclusive of USD fees for THIS transaction)
+    df["Total Cost"] = (df["Coins Purchased Num"] * df["Purchase Price (USD) Numeric"]) + df["usd_fee_value"]
+    df["Total Cost"] = df["Total Cost"].fillna(0.0)
+
+    # Define column order for the final transaction DataFrame
+    # "Total Cost" is now fee-inclusive. Original "Coins Purchased", "Purchase Price (USD)", "Fee Amount"
+    # are kept for display as they were entered by the user.
     desired_cols_order = [
         "ID", "Coin", "Symbol", "Type", "Coins Purchased", "Purchase Price (USD)",
-        "Total Cost", "Fee Amount", "Fee Currency", "Notes", "Timestamp"  # Adjusted order
+        "Total Cost",  # This is now (Qty*Price) + Fee_USD_Value
+        "Fee Amount", "Fee Currency", "Notes", "Timestamp"
     ]
     current_cols = [col for col in desired_cols_order if col in df.columns]
     remaining_cols = [col for col in df.columns if col not in current_cols]
     df = df[current_cols + remaining_cols]
-    df["Coins Purchased"] = pd.to_numeric(df["Coins Purchased"], errors="coerce").round(8)
-    df["Purchase Price (USD)"] = pd.to_numeric(df["Purchase Price (USD)"], errors="coerce")
-    df["Total Cost"] = (df["Coins Purchased"] * df["Purchase Price (USD)"]).fillna(0.0)
-    df["Fee Amount"] = pd.to_numeric(df["Fee Amount"], errors="coerce")  # Ensure numeric
+
+    # The original string/object columns "Coins Purchased", "Purchase Price (USD)", "Fee Amount"
+    # are preserved for display. Calculations will use the _Num versions.
     return df
 
 
 def build_summary_df(transactions_df):
+    # transactions_df now comes with:
+    # - Coins Purchased Num, Purchase Price (USD) Numeric, Fee Amount Num, usd_fee_value (per transaction)
+    # - Total Cost (per transaction, calculated as (Qty*Price) + usd_fee_value for that transaction)
     df = transactions_df.copy()
-    df["Coins Purchased Num"] = pd.to_numeric(df["Coins Purchased"], errors="coerce").fillna(0.0)
-    df["Purchase Price (USD) Numeric"] = pd.to_numeric(df["Purchase Price (USD)"], errors='coerce').fillna(0.0)
-    # Use pre-calculated Total Cost
-    df["Total Cost Numeric"] = pd.to_numeric(df["Total Cost"], errors="coerce").fillna(0.0)
-    df["Signed Coins"] = df.apply(
-        lambda row: row["Coins Purchased Num"] if row["Type"] == "Purchase" else -row["Coins Purchased Num"],
-        axis=1
-    )
+
+    # ---- DEBUG PRINT ---- #
+    # print("--- DataFrame inside build_summary_df after usd_fee_value calculation ---") #
+    # print(df[['Coin', 'Type', 'Fee Amount', 'Fee Currency', 'usd_fee_value', 'Purchase Price (USD) Numeric']]) #
+    # print("----------------------------------------------------------------------") #
+    # ---- END DEBUG PRINT ---- #
+
+    # --- Calculate Signed Coins (Effective change in coin quantity considering fees) ---
+    def calculate_signed_coins(row):
+        if row['Type'] == 'Purchase':
+            # If fee was paid in the same coin (check name or symbol against fee currency, case-insensitive)
+            fee_currency_lower_signed = str(row.get('Fee Currency', '')).lower()
+            coin_name_lower_signed = str(row['Coin']).lower()
+            coin_symbol_upper_signed = str(row.get('Symbol', '')).upper()
+
+            if (pd.notna(row['Fee Amount Num']) and row['Fee Amount Num'] > 0 and (  # Use Fee Amount Num
+                    fee_currency_lower_signed == coin_name_lower_signed or
+                    (coin_symbol_upper_signed and fee_currency_lower_signed == coin_symbol_upper_signed.lower()))):
+                return row['Coins Purchased Num'] - row['Fee Amount Num']
+            else:
+                return row['Coins Purchased Num']
+        elif row['Type'] == 'Sell':
+            fee_currency_lower_signed = str(row.get('Fee Currency', '')).lower()
+            coin_name_lower_signed = str(row['Coin']).lower()
+            coin_symbol_upper_signed = str(row.get('Symbol', '')).upper()
+
+            if (pd.notna(row['Fee Amount Num']) and row['Fee Amount Num'] > 0 and (  # Use Fee Amount Num
+                    fee_currency_lower_signed == coin_name_lower_signed or
+                    (coin_symbol_upper_signed and fee_currency_lower_signed == coin_symbol_upper_signed.lower()))):
+                return -(row['Coins Purchased Num'] + row['Fee Amount Num'])
+            else:
+                return -(row['Coins Purchased Num'])
+        return 0
+    df['Signed Coins'] = df.apply(calculate_signed_coins, axis=1)
 
     summary_rows = []
     for coin_name in df["Coin"].unique():
         coin_df = df[df["Coin"] == coin_name].copy()
+
         if coin_name == "US Dollars":
             net_usd_balance = coin_df["Signed Coins"].sum()
             summary_rows.append({
@@ -453,36 +527,42 @@ def build_summary_df(transactions_df):
 
         buys = coin_df[coin_df["Type"] == "Purchase"]
         sells = coin_df[coin_df["Type"] == "Sell"]
-        # Sum cost only from actual buys
-        total_coins_bought = buys["Coins Purchased Num"].sum()
-        total_cost_of_buys = buys[buys["Purchase Price (USD) Numeric"] > 0]["Total Cost Numeric"].sum()
 
-        avg_buy_price = (total_cost_of_buys / total_coins_bought) if total_coins_bought > 0 else 0.0
+        # "Total Cost" in buys DataFrame is already (Qty*Price) + usd_fee_value for each purchase transaction
+        total_effective_cost_of_buys = buys["Total Cost"].sum()
+
+        # This is the sum of nominal coins purchased, used for averaging price
+        total_gross_coins_bought_for_avg_price = buys["Coins Purchased Num"].sum()
+        avg_buy_price = (total_effective_cost_of_buys / total_gross_coins_bought_for_avg_price) \
+            if total_gross_coins_bought_for_avg_price > 1e-9 else 0.0
 
         realized_pl_for_coin = 0.0
         for _, sell_row in sells.iterrows():
-            sell_qty = sell_row["Coins Purchased Num"]
+            sell_qty = sell_row["Coins Purchased Num"]  # Nominal quantity sold
             sale_price_per_coin = sell_row["Purchase Price (USD) Numeric"]
+            gross_proceeds = sell_qty * sale_price_per_coin
+            fee_for_this_sale_usd = sell_row['usd_fee_value']
+            net_proceeds_from_sale = gross_proceeds - fee_for_this_sale_usd
             cost_of_sold_coins = sell_qty * avg_buy_price
-            proceeds_from_sale = sell_qty * sale_price_per_coin
-            realized_pl_for_coin += (proceeds_from_sale - cost_of_sold_coins)
+            realized_pl_for_coin += (net_proceeds_from_sale - cost_of_sold_coins)
 
         net_coins_held = coin_df["Signed Coins"].sum()
         current_total_cost_of_held_coins = 0.0
-        if net_coins_held > 1e-8:
+        # This calculates the cost basis of the coins actually held
+        if abs(net_coins_held) > 1e-9:
             current_total_cost_of_held_coins = net_coins_held * avg_buy_price
-        elif abs(net_coins_held) < 1e-8:
+        else:
             net_coins_held = 0.0
             current_total_cost_of_held_coins = 0.0
-            avg_buy_price = 0.0
-        if abs(current_total_cost_of_held_coins) < 1e-8:
+
+        if abs(current_total_cost_of_held_coins) < 1e-9:
             current_total_cost_of_held_coins = 0.0
 
         summary_rows.append({
             "Coin": coin_name,
             "Coins Purchased": net_coins_held,
-            "Total Cost": current_total_cost_of_held_coins,
-            "Average Price (USD)": avg_buy_price if net_coins_held > 0 else 0.0,
+            "Total Cost": current_total_cost_of_held_coins,  # Cost basis of net coins held
+            "Average Price (USD)": avg_buy_price if abs(net_coins_held) > 1e-9 else 0.0,
             "Realized P/L": realized_pl_for_coin
         })
 
@@ -509,14 +589,14 @@ def format_summary_display(summary_df_to_format):  # Add btc_price_usd if needed
 
     # Original format_sats - this will be used for "Latest Price (Sats)"
     def format_sats(value):
-        if pd.isnull(value) or not isinstance(value, (int, float)):  # Check also for non-numeric strings if any
+        if pd.isnull(value) or not isinstance(value, (int, float)):  # Check non-numeric
             return "-"
         # Ensure it's a number before trying to int() it, especially if None was passed
         if isinstance(value, (int, float)) and not pd.isnull(value):
             try:
                 return f"{int(value):,}"
             except (ValueError, TypeError):
-                return "-"  # Fallback for unexpected non-integer floats after checks
+                return "-"  # Fallback for unexpected non-integer floats
         return "-"
 
     # --- Apply new dynamic formatting and specific column formatting ---
@@ -618,9 +698,7 @@ def _format_number_dynamic_decimals(value, max_decimals, prefix="", include_comm
         abs_val_float = abs(val_float)
         final_sign = "-" if val_float < 0 else ""
 
-    # Format absolute value to string with full precision
-    # Using a sufficiently high number of decimal places for the intermediate string representation
-    # to avoid loss of precision before stripping. {max_decimals} should be enough.
+    # Format abs value to string with full precision for stripping
     abs_formatted_str_full_precision = f"{abs_val_float:.{max_decimals}f}"
 
     if '.' in abs_formatted_str_full_precision:
@@ -636,13 +714,13 @@ def _format_number_dynamic_decimals(value, max_decimals, prefix="", include_comm
             # int() correctly parses number strings like "1234"
             abs_num_int = int(abs_integer_part_str)
             abs_formatted_integer_part = f"{abs_num_int:,}"
-        except ValueError:  # Fallback if abs_integer_part_str is not a valid int string
+        except ValueError:  # Fallback if not a valid int string
             abs_formatted_integer_part = abs_integer_part_str
     else:
         abs_formatted_integer_part = abs_integer_part_str
 
     number_part = ""
-    if not abs_decimal_part_stripped:  # If decimal part is empty after stripping (e.g., 123.000 -> 123)
+    if not abs_decimal_part_stripped:  # e.g., 123.000 -> 123
         number_part = abs_formatted_integer_part
     else:
         number_part = f"{abs_formatted_integer_part}.{abs_decimal_part_stripped}"
@@ -742,8 +820,23 @@ def calc_unrealized_pl(row):
 
 
 # --- Main Display Functions ---
-def display_portfolio_summary(portfolio_entries_list):
+def prepare_portfolio_data(portfolio_entries_list):
+    """
+    Prepares all necessary dataframes and metrics for the portfolio.
+    This function handles data fetching, calculations, and formatting,
+    but does not render UI elements directly.
+    """
     transactions_df = build_transactions_df(portfolio_entries_list)
+    if transactions_df.empty:  # Should ideally not happen if get_portfolio() ensures entries
+        # Fallback for safety, return structure for graceful handling
+        return {
+            "transactions_df": pd.DataFrame(), "summary_df_raw": pd.DataFrame(),
+            "summary_for_table_display": pd.DataFrame(), "btc_price_usd": 0.0,
+            "id_map_debug": {}, "latest_prices": {}, "total_current_value_all_coins": 0.0,
+            "total_realized_pl_numeric": 0.0, "total_unrealized_pl": 0.0,
+            "raw_data_for_styling_lookup": pd.DataFrame()
+        }
+
     summary_df = build_summary_df(transactions_df)  # This df has raw 'Total Cost'
 
     user_coins = list(summary_df["Coin"].unique())
@@ -777,7 +870,8 @@ def display_portfolio_summary(portfolio_entries_list):
         btc_price_usd = temp_btc_price_data.get("Bitcoin")
         if was_rate_limited_btc:
             st.sidebar.warning("Could not fetch Bitcoin price separately due to API rate limits.")
-    elif btc_price_usd is None and was_rate_limited_main:
+    elif btc_price_usd is None and was_rate_limited_main:  # Check if already rate limited
+
         st.sidebar.warning("Bitcoin price not determined due to earlier API rate limit.")
 
     if not isinstance(btc_price_usd, (float, int)) or btc_price_usd <= 0:
@@ -789,9 +883,9 @@ def display_portfolio_summary(portfolio_entries_list):
     def calc_latest_price_sats_for_coin(coin_name, latest_price_usd_raw, current_btc_price_usd):
         if coin_name == "Bitcoin":
             return 100_000_000
-        if coin_name == "US Dollars" or pd.isnull(latest_price_usd_raw) or \
-           pd.isnull(current_btc_price_usd) or not isinstance(current_btc_price_usd, (int, float)) or \
-           current_btc_price_usd == 0:
+        if (coin_name == "US Dollars" or pd.isnull(latest_price_usd_raw) or
+                pd.isnull(current_btc_price_usd) or not isinstance(current_btc_price_usd, (int, float)) or
+                current_btc_price_usd == 0):
             return None
         try:
             price_usd = float(latest_price_usd_raw)
@@ -803,8 +897,8 @@ def display_portfolio_summary(portfolio_entries_list):
             return None
 
     summary_df["Latest Price (Sats) (raw)"] = summary_df.apply(
-        lambda row: calc_latest_price_sats_for_coin(row["Coin"], row.get("Latest Price (USD) (raw)"), btc_price_usd),
-        axis=1
+        lambda row: calc_latest_price_sats_for_coin(
+            row["Coin"], row.get("Latest Price (USD) (raw)"), btc_price_usd), axis=1
     )
 
     summary_df["CoinGecko ID"] = summary_df["Coin"].map(
@@ -812,10 +906,13 @@ def display_portfolio_summary(portfolio_entries_list):
     )
     sell_targets = get_sell_targets()
     summary_df["Sell Target (USD) (raw)"] = summary_df["Coin"].map(lambda c: sell_targets.get(c))
-    summary_df["Sell Target (Sats) (raw)"] = summary_df.apply(lambda row: calc_sell_target_sats(row, btc_price_usd), axis=1)
+    summary_df["Sell Target (Sats) (raw)"] = summary_df.apply(
+        lambda row: calc_sell_target_sats(row, btc_price_usd), axis=1)
     summary_df["Current Value (USD) (raw)"] = summary_df.apply(calc_current_value, axis=1)
-    summary_df["Current Value (Sats) (raw)"] = summary_df.apply(lambda row: calc_current_value_sats(row, btc_price_usd), axis=1)
-    summary_df["Profit at Sell Target (USD) (raw)"] = summary_df.apply(calc_profit, axis=1)
+    summary_df["Current Value (Sats) (raw)"] = summary_df.apply(
+        lambda row: calc_current_value_sats(row, btc_price_usd), axis=1)
+    summary_df["Profit at Sell Target (USD) (raw)"] = summary_df.apply(
+        calc_profit, axis=1)
     summary_df["Unrealized P/L (raw)"] = summary_df.apply(calc_unrealized_pl, axis=1)
 
     summary_df['Total Cost'] = pd.to_numeric(summary_df['Total Cost'], errors='coerce')
@@ -846,14 +943,10 @@ def display_portfolio_summary(portfolio_entries_list):
     else:
         raw_data_for_styling_lookup = summary_df.copy()
 
-    summary_for_plotting = summary_df.copy()
-    summary_for_table_display = format_summary_display(summary_df.copy())
-    summary_for_table_display = bitcoin_first_then_alpha(summary_for_table_display)
-
     total_current_value_all_coins = 0.0
-    if "Current Value (USD) (raw)" in summary_for_plotting.columns:
+    if "Current Value (USD) (raw)" in summary_df.columns:
         total_current_value_all_coins = pd.to_numeric(
-            summary_for_plotting["Current Value (USD) (raw)"], errors='coerce'
+            summary_df["Current Value (USD) (raw)"], errors='coerce'
         ).fillna(0.0).sum()
 
     if total_current_value_all_coins is not None:
@@ -861,17 +954,41 @@ def display_portfolio_summary(portfolio_entries_list):
         record_daily_portfolio_value(today_date_obj, total_current_value_all_coins)
 
     total_realized_pl_numeric = 0.0
-    if "Realized P/L" in summary_for_plotting.columns:
-        total_realized_pl_numeric = pd.to_numeric(summary_for_plotting["Realized P/L"], errors='coerce').fillna(0.0).sum()
+    if "Realized P/L" in summary_df.columns:
+        total_realized_pl_numeric = pd.to_numeric(summary_df["Realized P/L"], errors='coerce').fillna(0.0).sum()
 
     total_unrealized_pl = 0.0
-    if "Unrealized P/L (raw)" in summary_for_plotting.columns:
-        total_unrealized_pl = pd.to_numeric(summary_for_plotting["Unrealized P/L (raw)"], errors='coerce').fillna(0.0).sum()
+    if "Unrealized P/L (raw)" in summary_df.columns:
+        total_unrealized_pl = pd.to_numeric(summary_df["Unrealized P/L (raw)"], errors='coerce').fillna(0.0).sum()
 
+    # summary_df is now fully enriched, equivalent to the old summary_for_plotting
+    summary_df_raw_enriched = summary_df.copy()
+
+    # Prepare the version for table display (formatting and sorting)
+    summary_for_table_display = format_summary_display(summary_df_raw_enriched.copy())
+    summary_for_table_display = bitcoin_first_then_alpha(summary_for_table_display)
+
+    return {
+        "transactions_df": transactions_df,
+        "summary_df_raw": summary_df_raw_enriched,  # For plotting and movers
+        "summary_for_table_display": summary_for_table_display,  # For the main table
+        "btc_price_usd": btc_price_usd,
+        "id_map_debug": id_map_debug,
+        "latest_prices": latest_prices,
+        "total_current_value_all_coins": total_current_value_all_coins,
+        "total_realized_pl_numeric": total_realized_pl_numeric,
+        "total_unrealized_pl": total_unrealized_pl,
+        "raw_data_for_styling_lookup": raw_data_for_styling_lookup,
+    }
+
+
+def render_overview_metrics_and_movers(
+        total_current_value_all_coins, total_unrealized_pl, total_realized_pl_numeric, summary_df_raw):
+    """Renders the overview metric tiles and top/bottom movers."""
     st.subheader("📈 Portfolio Overview")
     metric_cols = st.columns(3)
-    tile_style = ("padding: 15px; border: 1px solid #ddd; border-radius: 8px; text-align: center; height: 100px; "
-                  "display: flex; flex-direction: column; justify-content: center;")
+    tile_style = ("padding: 15px; border: 1px solid #ddd; border-radius: 8px; "
+                  "text-align: center; height: 100px; display: flex; flex-direction: column; justify-content: center;")
     label_style = "font-size: 0.9em; color: #555; margin-bottom: 5px;"
     value_style_base = "font-size: 1.6em; font-weight: bold;"
 
@@ -908,11 +1025,11 @@ def display_portfolio_summary(portfolio_entries_list):
 
     st.markdown("#### <span style='font-size: 1.1em;'>🚀 Top Movers by Unrealized P/L %</span>", unsafe_allow_html=True)
     mover_cols = st.columns(2)
-    movers_df = summary_df[
-        (summary_df['Coin'] != 'US Dollars') &
-        summary_df['Unrealized P/L % (raw)'].notna() &
-        np.isfinite(summary_df['Unrealized P/L % (raw)']) &
-        (summary_df['Total Cost'].notna() & (abs(summary_df['Total Cost']) > 0.01))
+    movers_df = summary_df_raw[  # Use summary_df_raw (enriched raw data)
+        (summary_df_raw['Coin'] != 'US Dollars') &
+        summary_df_raw['Unrealized P/L % (raw)'].notna() &
+        np.isfinite(summary_df_raw['Unrealized P/L % (raw)']) &
+        (summary_df_raw['Total Cost'].notna() & (abs(summary_df_raw['Total Cost']) > 0.01))
     ].copy()
     top_gainer_info, top_loser_info = None, None
     if not movers_df.empty:
@@ -925,8 +1042,8 @@ def display_portfolio_summary(portfolio_entries_list):
             loser_row = losers_only_df.iloc[-1]
             top_loser_info = {"coin": loser_row["Coin"], "change": loser_row["Unrealized P/L % (raw)"]}
 
-    tile_style_small = ("padding: 10px; border: 1px solid #ddd; border-radius: 8px; text-align: center; height: 110px; "
-                        "display: flex; flex-direction: column; justify-content: center;")
+    tile_style_small = ("padding: 10px; border: 1px solid #ddd; border-radius: 8px; "
+                        "text-align: center; height: 110px; display: flex; flex-direction: column; justify-content: center;")
     label_style_small = "font-size: 0.85em; color: #555; margin-bottom: 4px;"
     coin_name_style_small = (
         "font-size: 1.0em; font-weight: normal; color: #333; margin-bottom: 4px; "
@@ -968,7 +1085,13 @@ def display_portfolio_summary(portfolio_entries_list):
             )
     st.markdown("<br>", unsafe_allow_html=True)
 
+
+def render_summary_data_table(summary_for_table_display, raw_data_for_styling_lookup, btc_price_usd):
+    """Renders the main portfolio summary table with styling."""
     st.subheader("💰 Portfolio Summary Details")
+    if summary_for_table_display.empty:
+        st.info("No summary data to display in the table.")
+        return
     if "CoinGecko ID" in summary_for_table_display.columns:
         summary_for_table_display = summary_for_table_display.drop(columns=["CoinGecko ID"])
 
@@ -1037,13 +1160,13 @@ def display_portfolio_summary(portfolio_entries_list):
                 latest_price_usd_raw_float = float(latest_price_usd_raw)
                 if sell_target_usd_raw_float > 0:
                     if latest_price_usd_raw_float >= sell_target_usd_raw_float:
-                        styles['Sell Target (USD)'] = 'background-color: darkgreen; color: white;'
+                        styles['Sell Target (USD)'] = 'background-color: darkgreen; color: white;'  # Met
                     else:
                         proximity_usd = latest_price_usd_raw_float / sell_target_usd_raw_float
                         if proximity_usd >= 0.90:
-                            styles['Sell Target (USD)'] = 'background-color: #A6FFA6; color: black;'
+                            styles['Sell Target (USD)'] = 'background-color: #A6FFA6; color: black;'  # 90%
                         elif proximity_usd >= 0.75:
-                            styles['Sell Target (USD)'] = 'background-color: #FFFFCC; color: black;'
+                            styles['Sell Target (USD)'] = 'background-color: #FFFFCC; color: black;'  # 75%
             except ValueError:
                 pass
         sell_target_sats_raw = raw_coin_data.get("Sell Target (Sats) (raw)")
@@ -1061,19 +1184,19 @@ def display_portfolio_summary(portfolio_entries_list):
                 )
             except (ValueError, TypeError, OverflowError):
                 pass  # latest_price_sats_raw remains None
-        if pd.notnull(sell_target_sats_raw) and pd.notnull(latest_price_sats_raw):  # Now check if latest_price_sats_raw was successfully calculated
+        if pd.notnull(sell_target_sats_raw) and pd.notnull(latest_price_sats_raw):  # Check if calculated
             try:
                 sell_target_sats_raw_int = int(sell_target_sats_raw)
                 latest_price_sats_raw_int = int(latest_price_sats_raw)  # This is already int if calculated
                 if sell_target_sats_raw_int > 0:
                     if latest_price_sats_raw_int >= sell_target_sats_raw_int:
-                        styles['Sell Target (Sats)'] = 'background-color: darkgreen; color: white;'
+                        styles['Sell Target (Sats)'] = 'background-color: darkgreen; color: white;'  # Met
                     else:
                         proximity_sats = latest_price_sats_raw_int / sell_target_sats_raw_int
                         if proximity_sats >= 0.90:
-                            styles['Sell Target (Sats)'] = 'background-color: #A6FFA6; color: black;'
+                            styles['Sell Target (Sats)'] = 'background-color: #A6FFA6; color: black;'  # 90%
                         elif proximity_sats >= 0.75:
-                            styles['Sell Target (Sats)'] = 'background-color: #FFFFCC; color: black;'
+                            styles['Sell Target (Sats)'] = 'background-color: #FFFFCC; color: black;'  # 75%
             except ValueError:
                 pass
         return styles
@@ -1088,14 +1211,21 @@ def display_portfolio_summary(portfolio_entries_list):
             subset=["Unrealized P/L %"]
         )
     current_btc_price_for_styling = btc_price_usd if isinstance(btc_price_usd, (float, int)) else 0.0
-    if not raw_data_for_styling_lookup.empty and not summary_for_table_display.empty:
+    if (not raw_data_for_styling_lookup.empty and
+            not summary_for_table_display.empty):
         styler_obj = styler_obj.apply(lambda row: apply_sell_target_styles_lookup(row, current_btc_price_for_styling), axis=1)
     st.dataframe(styler_obj, hide_index=False, use_container_width=True)
 
+
+def render_portfolio_visualizations(summary_df_raw, btc_price_usd_val):
+    """Renders all portfolio visualization charts."""
+    if summary_df_raw.empty:
+        st.info("Not enough data to generate visualizations.")
+        return
+
     st.markdown("---")
     st.subheader("📊 Portfolio Visualizations")
-
-    plot_df_coins_only = summary_for_plotting[summary_for_plotting['Coin'] != 'US Dollars'].copy()
+    plot_df_coins_only = summary_df_raw[summary_df_raw['Coin'] != 'US Dollars'].copy()  # Use summary_df_raw
     plot_df_allocation = plot_df_coins_only[
         plot_df_coins_only['Current Value (USD) (raw)'].notna() &
         (pd.to_numeric(plot_df_coins_only['Current Value (USD) (raw)'], errors='coerce').fillna(0) > 0.01)
@@ -1190,12 +1320,12 @@ def display_portfolio_summary(portfolio_entries_list):
 
     st.markdown("---")
     st.markdown("#### Sell Targets vs. Current Price")
-    plot_df_targets_source = plot_df_coins_only[
+    plot_df_targets_source = plot_df_coins_only[(
         plot_df_coins_only['Sell Target (USD) (raw)'].notna() &
         plot_df_coins_only['Latest Price (USD) (raw)'].notna() &
         (pd.to_numeric(plot_df_coins_only['Sell Target (USD) (raw)'], errors='coerce').fillna(0) > 0) &
         (pd.to_numeric(plot_df_coins_only['Latest Price (USD) (raw)'], errors='coerce').fillna(0) > 0)
-    ].copy()
+    )].copy()
     if not plot_df_targets_source.empty:
         log_y_targets = st.checkbox("Logarithmic Y-axis", key="log_y_targets_toggle_main", value=True)
         try:
@@ -1280,7 +1410,8 @@ def display_portfolio_summary(portfolio_entries_list):
     historical_db_df = get_trend_chart_data_from_db(start_date_for_trend, current_date_for_trend)
 
     if not historical_db_df.empty and len(historical_db_df) > 1:
-        if historical_db_df["Total Portfolio Value"].sum() > 0 or historical_db_df["Total Portfolio Value"].nunique() > 1:
+        if (historical_db_df["Total Portfolio Value"].sum() > 0 or
+                historical_db_df["Total Portfolio Value"].nunique() > 1):
             fig_trend = px.line(
                 historical_db_df, x='date', y='Total Portfolio Value',
                 title='Portfolio Value Over Last Year (Recorded)', markers=True,
@@ -1310,7 +1441,43 @@ def display_portfolio_summary(portfolio_entries_list):
             "Data will be recorded each day you view the portfolio.)_"
         )
 
-    return transactions_df, summary_for_table_display, btc_price_usd, id_map_debug, latest_prices
+
+def display_portfolio_summary(portfolio_entries_list):
+    """
+    Orchestrates data preparation and rendering of the portfolio summary,
+    metrics, movers, table, and visualizations.
+    """
+    portfolio_data = prepare_portfolio_data(portfolio_entries_list)
+
+    # If data preparation failed or resulted in empty essential data, handle gracefully
+    if not portfolio_data or portfolio_data.get("summary_df_raw", pd.DataFrame()).empty:
+        st.warning("Could not process portfolio data. There might be no transactions or an issue fetching initial data.")
+        # Return expected structure for main() to avoid errors
+        return pd.DataFrame(), pd.DataFrame(), 0.0, {}, {}
+
+    render_overview_metrics_and_movers(
+        portfolio_data["total_current_value_all_coins"],
+        portfolio_data["total_unrealized_pl"],
+        portfolio_data["total_realized_pl_numeric"],
+        portfolio_data["summary_df_raw"]
+    )
+    render_summary_data_table(
+        portfolio_data["summary_for_table_display"],
+        portfolio_data["raw_data_for_styling_lookup"],
+        portfolio_data["btc_price_usd"]
+    )
+    render_portfolio_visualizations(
+        portfolio_data["summary_df_raw"],
+        portfolio_data["btc_price_usd"]
+    )
+
+    return (
+        portfolio_data["transactions_df"],
+        portfolio_data["summary_for_table_display"],
+        portfolio_data["btc_price_usd"],
+        portfolio_data["id_map_debug"],  # Preserving original return signature
+        portfolio_data["latest_prices"]  # Preserving original return signature
+    )
 
 
 def display_transactions_table(transactions_df_to_display):
@@ -1326,7 +1493,7 @@ def display_transactions_table(transactions_df_to_display):
         df_display["Purchase Price (USD)"] = df_display["Purchase Price (USD)"].apply(
             lambda x: f"${x:,.2f}" if pd.notnull(x) else "-"
         )
-    if "Total Cost" in df_display.columns:  # This will be adjusted later for fees
+    if "Total Cost" in df_display.columns:
         df_display["Total Cost"] = df_display["Total Cost"].apply(
             lambda x: f"${x:,.2f}" if pd.notnull(x) else "-"
         )
@@ -1347,7 +1514,10 @@ def display_transactions_table(transactions_df_to_display):
     display_cols = [col for col in df_display.columns if col != "ID"]
 
     # Adjust column proportions: make Notes wider, Actions column a bit wider for two buttons
-    column_proportions = [1.5 if col not in ["Notes", "Symbol"] else (2.5 if col == "Notes" else 1) for col in display_cols] + [1.0]  # Actions column width
+    column_proportions = [
+        1.5 if col not in ["Notes", "Symbol"] else (2.5 if col == "Notes" else 1)
+        for col in display_cols
+    ] + [1.0]  # Actions column width
     header_cols = st.columns(column_proportions)
 
     for i, col_name in enumerate(display_cols):
@@ -1360,9 +1530,9 @@ def display_transactions_table(transactions_df_to_display):
         confirm_delete_key = f"confirm_delete_{entry_id}"
 
         with st.form(key=form_key, clear_on_submit=False):
-            form_cols = st.columns(column_proportions)  # Assuming column_proportions is defined
+            form_cols = st.columns(column_proportions)
 
-            for i, col_name in enumerate(display_cols):  # Assuming display_cols is defined
+            for i, col_name in enumerate(display_cols):
                 form_cols[i].write(str(df_display.loc[idx, col_name]))
 
             action_col = form_cols[-1]
@@ -1380,7 +1550,7 @@ def display_transactions_table(transactions_df_to_display):
             if edit_submitted:
                 st.session_state.editing_transaction_id = entry_id
                 st.session_state.show_edit_form = True
-                st.session_state.pop(confirm_delete_key, None)  # Clear any pending delete for this item
+                st.session_state.pop(confirm_delete_key, None)  # Clear pending delete
                 st.rerun()
 
             if delete_submitted:
@@ -1390,7 +1560,8 @@ def display_transactions_table(transactions_df_to_display):
                 st.rerun()
 
         # Confirmation dialog for delete
-        if st.session_state.get(confirm_delete_key, False) and st.session_state.get('editing_transaction_id') != entry_id:
+        if (st.session_state.get(confirm_delete_key, False) and
+                st.session_state.get('editing_transaction_id') != entry_id):
             with st.container():
                 st.markdown("---")
                 st.warning(
@@ -1477,7 +1648,7 @@ def display_sell_targets_ui(portfolio_summary_df, btc_price_usd_val):
 def handle_add_purchase():
     with st.expander("➕ Add New Transaction", expanded=False):
         with st.form(key="add_transaction_form", clear_on_submit=True):
-            c1, c2, c3 = st.columns(3)  # Changed to 3 columns for better layout
+            c1, c2, c3 = st.columns(3)
             with c1:
                 st.text_input("Cryptocurrency Name*", key="add_form_coin_name")
                 st.number_input("Number of Coins*", min_value=1e-8, step=1e-8, format="%.8f", key="add_form_num_coins")
@@ -1486,15 +1657,14 @@ def handle_add_purchase():
                     ["Purchase", "Sell"],
                     key="add_form_tx_type",
                     index=0
-                )  # Default to Purchase
+                )
             with c2:
                 st.number_input("Price per Coin (USD)*", min_value=0.0, step=1e-8, format="%.8f", key="add_form_purchase_price")
                 sell_to_options = ["USD", "BTC Satoshis", "N/A"]
-                default_sell_to_idx = 2  # N/A
-                # Use session state for reliable current type for index logic
+                default_sell_to_idx = 2
                 current_tx_type = st.session_state.get("add_form_tx_type", "Purchase")
                 if current_tx_type == "Purchase":
-                    default_sell_to_idx = 2  # N/A
+                    default_sell_to_idx = 2
                 elif current_tx_type == "Sell":
                     prev_sell_to = st.session_state.get("add_form_sell_to")
                     if prev_sell_to == "USD":
@@ -1502,7 +1672,7 @@ def handle_add_purchase():
                     elif prev_sell_to == "BTC Satoshis":
                         default_sell_to_idx = 1
                     else:
-                        default_sell_to_idx = 0  # Default to USD for new Sell
+                        default_sell_to_idx = 0
                 st.selectbox("Sell To", options=sell_to_options, index=default_sell_to_idx, key="add_form_sell_to")
                 st.number_input(
                     "BTC Price at Sale (USD)",
@@ -1512,17 +1682,13 @@ def handle_add_purchase():
                     value=st.session_state.get("add_form_btc_price_sale", 0.0),
                     key="add_form_btc_price_sale"
                 )
-
-            # --- New column for Fees and Notes ---
             with c3:
                 st.number_input("Fee Amount", min_value=0.0, step=1e-8, format="%.8f", key="add_form_fee_amount", help="Optional transaction fee.")
                 st.text_input("Fee Currency (e.g., USD or coin symbol)", key="add_form_fee_currency", help="Optional. E.g., USD, BTC, ETH.")
                 st.text_area("Notes", key="add_form_notes", height=100, help="Optional notes for this transaction.")
-            # --- End new column ---
 
             st.markdown("Transaction Timestamp:")
             ts_c1a, ts_c2a = st.columns(2)
-            # Default to current date/time
             with ts_c1a:
                 st.date_input(
                     "Date",
@@ -1542,7 +1708,6 @@ def handle_add_purchase():
 
             submitted = st.form_submit_button("Add Transaction")
             if submitted:
-                # Retrieve values from session state for robustness
                 form_coin_name = st.session_state.add_form_coin_name
                 form_num_coins = st.session_state.add_form_num_coins
                 form_purchase_price = st.session_state.add_form_purchase_price
@@ -1551,6 +1716,22 @@ def handle_add_purchase():
                 form_btc_price_sale = st.session_state.add_form_btc_price_sale
                 form_date_val = st.session_state.add_form_date
                 form_time_val = st.session_state.add_form_time
+
+                # --- MODIFICATION START --- #
+                # Retrieve notes and fee information #
+                form_notes = st.session_state.add_form_notes
+                form_fee_amount = st.session_state.add_form_fee_amount
+                form_fee_currency = st.session_state.add_form_fee_currency
+
+                # Prepare final values for DB #
+                final_notes = form_notes if form_notes and form_notes.strip() != "" else None
+                final_fee_amount = form_fee_amount if form_fee_amount is not None and form_fee_amount > 1e-9 else None  # Epsilon
+                final_fee_currency = form_fee_currency if final_fee_amount is not None and form_fee_currency and form_fee_currency.strip() != "" else None
+
+                # Ensure fee_currency is None if fee_amount is None or zero #
+                if final_fee_amount is None:
+                    final_fee_currency = None
+                # --- MODIFICATION END --- #
 
                 if not form_coin_name:
                     st.error("Cryptocurrency name is required.")
@@ -1567,9 +1748,9 @@ def handle_add_purchase():
 
                 timestamp_str = datetime.combine(form_date_val, form_time_val).strftime('%Y-%m-%d %H:%M:%S')
                 if form_transaction_type == "Sell":
-                    portfolio = get_portfolio()  # Fetch current portfolio to check balance
+                    portfolio = get_portfolio()
                     balance = sum(e.coins_purchased if e.transaction_type == "Purchase" else -e.coins_purchased for e in portfolio if e.coin == form_coin_name)
-                    if form_num_coins > balance + 1e-8:  # Add epsilon for float comparison
+                    if form_num_coins > balance + 1e-8:
                         st.error(
                             f"Cannot sell {form_num_coins} {form_coin_name}. You only own approx. {balance:,.8f}."
                         )
@@ -1581,26 +1762,28 @@ def handle_add_purchase():
                             return
                         add_entry(
                             form_coin_name, form_num_coins, form_purchase_price, "Sell",
-                            sell_to="BTC Satoshis", btc_price_at_sale=form_btc_price_sale, timestamp=timestamp_str
+                            sell_to="BTC Satoshis", btc_price_at_sale=form_btc_price_sale, timestamp=timestamp_str,
+                            notes=final_notes, fee_amount=final_fee_amount, fee_currency=final_fee_currency  # MODIFICATION
                         )
                         btc_rcvd = (form_purchase_price / form_btc_price_sale) * form_num_coins
                         add_entry(
                             "Bitcoin", btc_rcvd, form_btc_price_sale, "Purchase", timestamp=timestamp_str
-                        )  # Add received BTC as a purchase
+                        )
                         st.success(
-                            f"Sold {form_num_coins} {form_coin_name}. Added {btc_rcvd:,.8f} Bitcoin."
+                            f"Sold {form_num_coins} {form_coin_name}. Added {btc_rcvd:,.8f} Bitcoin. Notes/Fees recorded."
                         )
                     elif form_sell_to == "USD":
                         add_entry(
                             form_coin_name, form_num_coins, form_purchase_price, "Sell",
-                            sell_to="USD", timestamp=timestamp_str
+                            sell_to="USD", timestamp=timestamp_str,
+                            notes=final_notes, fee_amount=final_fee_amount, fee_currency=final_fee_currency  # MODIFICATION
                         )
                         usd_rcvd = form_num_coins * form_purchase_price
                         add_entry(
                             "US Dollars", usd_rcvd, 1.0, "Purchase", timestamp=timestamp_str
-                        )  # Add received USD as a purchase
+                        )
                         st.success(
-                            f"Sold {form_num_coins} {form_coin_name}. Added ${usd_rcvd:,.2f} USD."
+                            f"Sold {form_num_coins} {form_coin_name}. Added ${usd_rcvd:,.2f} USD. Notes/Fees recorded."
                         )
                     elif form_sell_to == "N/A":
                         st.error(
@@ -1608,7 +1791,6 @@ def handle_add_purchase():
                         )
                         return
                     else:
-                        # Should not be reached with current options
                         st.error(
                             f"Invalid 'Sell To' option: {form_sell_to} for a Sell transaction."
                         )
@@ -1621,11 +1803,13 @@ def handle_add_purchase():
                         )
                     add_entry(
                         form_coin_name, form_num_coins, form_purchase_price, "Purchase",
-                        sell_to=None, btc_price_at_sale=None, timestamp=timestamp_str
+                        sell_to=None, btc_price_at_sale=None, timestamp=timestamp_str,
+                        notes=final_notes, fee_amount=final_fee_amount, fee_currency=final_fee_currency  # MODIFICATION
                     )
                     st.success(
-                        f"Purchased {form_num_coins} {form_coin_name} at ${form_purchase_price:,.8f} each."
+                        f"Purchased {form_num_coins} {form_coin_name} at ${form_purchase_price:,.8f} each. Notes/Fees recorded."
                     )
+                st.rerun()
 
 
 def handle_edit_transaction():
@@ -1743,13 +1927,13 @@ def handle_edit_transaction():
                             st.session_state.show_edit_form = False
                             st.session_state.pop('editing_transaction_id', None)
                             st.rerun()
-                        # else: update_entry shows its own error (st.error, will appear in main page if not changed to st.sidebar.error)
+                        # else: update_entry shows its own error
 
                 if cancel_edit:
                     st.session_state.show_edit_form = False
                     st.session_state.pop('editing_transaction_id', None)
                     st.rerun()
-        # st.sidebar.markdown("---") # Optional separator
+        # st.sidebar.markdown("---")  # Optional separator
 
 
 def main():
@@ -1758,17 +1942,54 @@ def main():
     handle_edit_transaction()
     handle_add_purchase()
     st.markdown("---")
+
     portfolio_entries = get_portfolio()
-    if portfolio_entries:
-        transactions_df, summary_df_table, btc_price_usd_val, _, _ = display_portfolio_summary(portfolio_entries)
-        st.markdown("---")
-        display_sell_targets_ui(summary_df_table, btc_price_usd_val)
-        st.markdown("---")
-        display_transactions_table(transactions_df)
-    else:
+
+    if not portfolio_entries:
         st.info("👋 Your portfolio is empty. Add transactions using the section above to begin tracking!")
+        return
+
+    # Prepare all data once #
+    portfolio_data = prepare_portfolio_data(portfolio_entries)
+
+    # Check if essential data is missing #
+    if not portfolio_data or portfolio_data.get("summary_df_raw", pd.DataFrame()).empty:
+        st.warning("Could not process portfolio data. There might be no transactions or an issue fetching initial data.")
+        if portfolio_data and "transactions_df" in portfolio_data and not portfolio_data["transactions_df"].empty:
+            st.subheader("🧾 All Transactions")  # Keep subheader for consistency
+            display_transactions_table(portfolio_data["transactions_df"])
+        return
+
+    tab_overview, tab_sell_targets, tab_transactions, tab_visualizations = st.tabs([
+        "📈 Portfolio Overview",
+        "🎯 Set Sell Targets",
+        "🧾 All Transactions",
+        "📊 Visualizations"
+    ])
+
+    with tab_overview:
+        render_overview_metrics_and_movers(
+            portfolio_data["total_current_value_all_coins"],
+            portfolio_data["total_unrealized_pl"],
+            portfolio_data["total_realized_pl_numeric"],
+            portfolio_data["summary_df_raw"]
+        )
+        render_summary_data_table(
+            portfolio_data["summary_for_table_display"],
+            portfolio_data["raw_data_for_styling_lookup"],
+            portfolio_data["btc_price_usd"]
+        )
+
+    with tab_sell_targets:
+        display_sell_targets_ui(portfolio_data["summary_for_table_display"], portfolio_data["btc_price_usd"])
+
+    with tab_transactions:
+        display_transactions_table(portfolio_data["transactions_df"])
+
+    with tab_visualizations:
+        render_portfolio_visualizations(portfolio_data["summary_df_raw"], portfolio_data["btc_price_usd"])
 
 
 if __name__ == "__main__":
-    # delete_today_portfolio_value()
+    # delete_oldest_portfolio_value_history_entry()  # Uncomment to clear the oldest history point for testing
     main()
